@@ -313,7 +313,6 @@ function loadGame (blueStarts = true) {
     words = []
     const count = 25
 	let arr = new Array(count)
-	debugger
 	spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
 	if (spyMasterView) {
 		document.querySelector('.spymaster').style.display = 'none'
@@ -327,7 +326,7 @@ function loadGame (blueStarts = true) {
 	else {
 			{
 				let min = 0
-				let max = count - 1
+				let max = word_dict.length - 1
 				while (min < count) {
 					let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
 					let temp = word_dict[randomIndex]
