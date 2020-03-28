@@ -1,0 +1,53 @@
+body {
+    background-color: black;
+    color: white;
+    font-family: 'Courier New', Courier, monospace;
+}
+.codenames {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 15vh);
+    grid-gap: 1rem;
+    margin: 1rem;
+}
+
+.word {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid gray;
+  border-radius: .25rem;
+  box-shadow: inset 1px 1px 1px 1px lightgray;
+  box-sizing: border-box;
+}
+
+.codenames > .blue {
+  background-color: #34a5eb;
+}
+
+.codenames > .red {
+    background-color:#eb4934;
+}
+
+.codenames > .neutral {
+    background-color: orange;
+    color: black;
+}
+
+.codenames > .black {
+    background-color: gray;
+    color: white;
+}
+
+.currentTeam.blue {
+    color: #34a5eb;
+}
+
+.currentTeam.red {
+    color: #eb4934 ;
+}
+
+.word:hover {
+    transition: border-color .25s ease-in;
+    border-color: white;
+    border-width: 2px;}

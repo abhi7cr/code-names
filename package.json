@@ -1,0 +1,6 @@
+{
+    "name": "CodeNames",
+    "dependencies": {
+        "http-server": "^0.12.0"
+    }
+}
