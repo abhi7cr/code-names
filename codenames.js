@@ -467,16 +467,16 @@ function drawGrid (words) {
 									loadGame()
 							}
 							if (teamBelongingTo === TEAM_STYLE.NEUTRAL || teamBelongingTo != currentTeamEnum[currentTeam]) {
-								const shakeAnimation = [
-									{transform: 'rotate(2deg)'},
-									{transform: 'rotate(-2deg)'},
-									{transform: 'rotate(1deg)'},
-									{transform: 'rotate(-1deg)'}
-								]
-								wordDiv.animate(shakeAnimation, {
-									duration: 1000,
-									easing: 'ease-in-out'
-								})
+// 								const shakeAnimation = [
+// 									{transform: 'rotate(2deg)'},
+// 									{transform: 'rotate(-2deg)'},
+// 									{transform: 'rotate(1deg)'},
+// 									{transform: 'rotate(-1deg)'}
+// 								]
+// 								wordDiv.animate(shakeAnimation, {
+// 									duration: 1000,
+// 									easing: 'ease-in-out'
+// 								})
 								endTurn()
 							}
 							
