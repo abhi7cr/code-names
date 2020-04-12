@@ -1,3 +1,31 @@
+
+let name
+let words = []
+// Check to see if its an invited session
+let session_id = window.location.hash
+let session
+if (session_id) {
+	session_id = session_id.slice(1)
+	db.collection("sessions").doc(session_id)
+	.onSnapshot(function(doc){
+		if (!name) {
+		  document.querySelector('.join').style.display = 'block'
+		}
+		session = doc.data()
+		console.log("Current data: ", session);
+		const playersList = document.querySelector('.players')
+		session.players.forEach(p => {
+			const li = document.createElement('li')
+			li.innerText = p.name
+			playersList.appendChild(li)
+		})
+	})
+} else {
+  document.querySelector('.inviteInfo').style.display = 'block'
+  document.querySelector('.start').style.display = 'block'
+}
+
+
 //word list
 const word_dict = [
 	'sea',
@@ -331,9 +359,17 @@ const word_dict = [
 	'parcel',
 	'thread',
 	'cash',
-	'money'
-]
+	'money',
+	'holocaust',
+	'germany',
+	'jews',
+	'war',
+	'rebel',
+	'protest',
+	'anarchy',
 
+
+]    
 
 let blue = new Set()
 let red = new Set()
@@ -366,81 +402,132 @@ let TEAM_NAME = {
 }
 let showWords = true
 let elements = {}
+const base62 = 'abcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
+const base62Length = base62.length
+
+
+function validateName () {
+  const nameFromInput = document.querySelector('.name').value
+  if (nameFromInput && nameFromInput.trim()) {
+	name = nameFromInput
+	session_id ? document.querySelector('.join').disabled = false : document.querySelector('.start').disabled = false
+  }
+}
+
+function join () {
+	let blueTeam = session.players.map(p => p.team).length
+	let redTeam = session.players.map(p => !p.team).length
+	db.collection("sessions").doc(session_id).set({
+		players: [...session.players, {name, team: blueTeam > redTeam ? 0 : 1 }],
+	  }, {merge: true}).then(function(docRef) {
+		  console.log("started new session", docRef.id)
+	  })
+	  .catch(function(err) {
+		  console.error("Error starting new session", error)
+	  })
+}
+
+function start () {
+	if (session_id) {
+	  console.warn('Already in a session. Please stop it to start a new one.')
+	  return
+	}
+	session_id = base62[Math.floor(Math.random() * base62Length)] + 
+					base62[Math.floor(Math.random() * base62Length)] + 
+					base62[Math.floor(Math.random() * base62Length)] + 
+					base62[Math.floor(Math.random() * base62Length)] + 
+					base62[Math.floor(Math.random() * base62Length)]
+
+	window.location.replace(window.location.href + '#' + session_id)
+
+	db.collection("sessions").doc(session_id).set({
+	  owner: name,
+	  players: [{name, team: 1}],
+	  words
+	}).then(function(docRef) {
+		console.log("started new session", docRef.id)
+	})
+	.catch(function(err) {
+		console.error("Error starting new session", error)
+	})
+}
 
 function loadGame (blueStarts = true) {
-    words = []
-    const count = 25
-	let arr = new Array(count)
-	spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
-	if (spyMasterView) {
-		document.querySelector('.spymaster').style.display = 'none'
-		document.querySelector('.info').style.display = 'none'
-		const cachedItems = localStorage.getItem('arr')
-		arr = JSON.parse(cachedItems)
-		wordTeamDict = JSON.parse(localStorage.getItem('wordTeamDict'))
-		words = JSON.parse(localStorage.getItem('words'))
-		localStorage.clear()
-	}
-	else {
-			{
-				let min = 0
-				let max = word_dict.length - 1
-				while (min < count) {
-					let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
-					let temp = word_dict[randomIndex]
-					word_dict[randomIndex] = word_dict[min]
-					word_dict[min] = temp
-					words.push(temp)
-					min++
-				}
-			}
-		let bLen = blueStarts ? 9 : 8
-		let rLen = blueStarts ? 8 : 9
-		let nLen = 7
-		let b = new Array(bLen).fill(TEAM_NAME.BLUE)
-		let r = new Array(rLen).fill(TEAM_NAME.RED)
-		let n = new Array(nLen).fill(TEAM_NAME.NEUTRAL)
-		arr = [...b,...r,...n, TEAM_NAME.BLACK]
-		let min = 0
-		let max = count-1
-		while (min < count) {
-				let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
-				let temp = arr[randomIndex]
-				arr[randomIndex] = arr[min]
-				arr[min] = temp
-				min++
+    if (!words.length) {
+		
+		const count = 25
+		let arr = new Array(count)
+		spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
+		if (spyMasterView) {
+			document.querySelector('.spymaster').style.display = 'none'
+			document.querySelector('.info').style.display = 'none'
+			const cachedItems = localStorage.getItem('arr')
+			arr = JSON.parse(cachedItems)
+			wordTeamDict = JSON.parse(localStorage.getItem('wordTeamDict'))
+			words = JSON.parse(localStorage.getItem('words'))
+			localStorage.clear()
 		}
-		arr.forEach((a, i) => {
-			const w = words[i]
-			switch(a) {
-				case TEAM_NAME.BLUE:
-					blue.add(w)
-					wordTeamDict[w] = [TEAM_STYLE.BLUE, blue]
-					break
-				case TEAM_NAME.RED:
-					red.add(w)
-					wordTeamDict[w] = [TEAM_STYLE.RED, red]
-					break
-				case TEAM_NAME.NEUTRAL:
-					neutral.add(w)
-					wordTeamDict[w] = [TEAM_STYLE.NEUTRAL, neutral]
-					break
-				case TEAM_NAME.BLACK:
-					black.add(w)
-					wordTeamDict[w] = [TEAM_STYLE.BLACK, black]
-					break
+		else {
+				{
+					let min = 0
+					let max = word_dict.length - 1
+					while (min < count) {
+						let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
+						let temp = word_dict[randomIndex]
+						word_dict[randomIndex] = word_dict[min]
+						word_dict[min] = temp
+						words.push(temp)
+						min++
+					}
+				}
+			let bLen = blueStarts ? 9 : 8
+			let rLen = blueStarts ? 8 : 9
+			let nLen = 7
+			let b = new Array(bLen).fill(TEAM_NAME.BLUE)
+			let r = new Array(rLen).fill(TEAM_NAME.RED)
+			let n = new Array(nLen).fill(TEAM_NAME.NEUTRAL)
+			arr = [...b,...r,...n, TEAM_NAME.BLACK]
+			let min = 0
+			let max = count-1
+			while (min < count) {
+					let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
+					let temp = arr[randomIndex]
+					arr[randomIndex] = arr[min]
+					arr[min] = temp
+					min++
 			}
-		})
-		// cache in local storage
-		localStorage.setItem('words', JSON.stringify(words))
-		localStorage.setItem('arr', JSON.stringify(arr))
-		localStorage.setItem('blue', JSON.stringify(blue))
-		localStorage.setItem('red', JSON.stringify(red))
-		localStorage.setItem('neutral', JSON.stringify(neutral))
-		localStorage.setItem('black', JSON.stringify(black))
-		localStorage.setItem('wordTeamDict', JSON.stringify(wordTeamDict))
-	}
+			arr.forEach((a, i) => {
+				const w = words[i]
+				switch(a) {
+					case TEAM_NAME.BLUE:
+						blue.add(w)
+						wordTeamDict[w] = [TEAM_STYLE.BLUE, blue]
+						break
+					case TEAM_NAME.RED:
+						red.add(w)
+						wordTeamDict[w] = [TEAM_STYLE.RED, red]
+						break
+					case TEAM_NAME.NEUTRAL:
+						neutral.add(w)
+						wordTeamDict[w] = [TEAM_STYLE.NEUTRAL, neutral]
+						break
+					case TEAM_NAME.BLACK:
+						black.add(w)
+						wordTeamDict[w] = [TEAM_STYLE.BLACK, black]
+						break
+				}
+			})
+			// cache in local storage
+			localStorage.setItem('words', JSON.stringify(words))
+			localStorage.setItem('arr', JSON.stringify(arr))
+			localStorage.setItem('blue', JSON.stringify(blue))
+			localStorage.setItem('red', JSON.stringify(red))
+			localStorage.setItem('neutral', JSON.stringify(neutral))
+			localStorage.setItem('black', JSON.stringify(black))
+			localStorage.setItem('wordTeamDict', JSON.stringify(wordTeamDict))
+		}
 
+	}
 	drawGrid(words)
 	setCurrentTeam()
 }
@@ -457,14 +544,13 @@ function drawGrid (words) {
 							let [teamBelongingTo, team] = wordTeamDict[w]
 							wordDiv.classList.add(teamBelongingTo)
 							team.delete(w)
+							debugger
 							if (teamBelongingTo === 'black') {
 								alert(currentTeam ? 'Team blue has lost the game' : 'Team red has lost the game')
-								loadGame()
 								return
 							}
 							if (team.size === 0) {
-									alert(`Team ${teamBelongingTo} has won the game! :)`)
-									loadGame()
+								alert(`Team ${teamBelongingTo} has won the game! :)`)
 							}
 							if (teamBelongingTo === TEAM_STYLE.NEUTRAL || teamBelongingTo != currentTeamEnum[currentTeam]) {
 								const shakeAnimation = [

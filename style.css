@@ -1,8 +1,49 @@
 body {
     background-color: black;
     color: white;
-    font-family: "Comic Sans MS", "Comic Sans", cursive;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 1.2rem;
 }
+.button {
+  width: 100px;
+  height: 40px;
+  margin-left: 1rem;
+  border-radius: 5%;
+  box-shadow: 1px 1px 1px gainsboro;
+  font-family: 'Courier New', Courier, monospace;
+  background-color: hsl(148, 55%, 54%);
+}
+
+.button:hover {
+  background-color: hsl(148, 47%, 54%);
+}
+
+.refresh-btn {
+  background-color: ivory;
+}
+
+.refresh-btn:hover {
+  background-color: whitesmoke;
+}
+
+.start {
+    background-color: tomato;
+    color: white;
+}
+
+.start:hover {
+    background-color: red;
+}
+
+.refresh-btn > img{
+  margin-top: 2px;
+}
+
+.invite {
+    display: flex;
+    margin: 1rem;
+}
+
 .codenames {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -50,4 +91,9 @@ body {
 .word:hover {
     transition: border-color .25s ease-in;
     border-color: white;
-    border-width: 2px;}
+    border-width: 2px;
+}
+
+.info {
+  display: flex;
+}
