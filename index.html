@@ -5,12 +5,19 @@
 <body>
     <h3 class="inviteInfo" style="display: none;">Invite friends to your session by clicking start, and sharing the above url</h3>
     <div class="invite">  
-        <input type="text" style="width:200px;" class="name" name="name" placeholder="enter a funny name" onblur="validateName()"/>
+        <input type="text" style="width:200px;" class="name" name="name" placeholder="enter a funny name"  onkeyup="validateName('start')"/>
         <button class="start button" onclick="start()" style="display: none;" disabled>Start</button>
         <button class="join button" onclick="join()" style="display: none;" disabled>Join</button>
-        <ul class="players">
-        </ul>
+        <button class="play button" onclick="play()" style="display: none;">Play</button>
+        <button class="stop button" onclick="stop()" style="display: none;" disabled>Stop</button>
+        <div class="spymasterContainer" style="display: none;">
+            <button class="spymaster button" onclick="loadSpyMasterView()">Enable Spy Master</button>
+            <input type="text" style="width:200px;" name="clue" onkeyup="validateName('giveClue')" placeholder="type your clue here"/>
+            <button class="giveClue button" onclick="giveClue()" disabled>Submit</button>
+        </div>
     </div>
+    <label>Players:</label>
+    <ul class="players"></ul>
     <div class="info">
         <span>Current team:</span>
         <span class="currentTeam"></span>
@@ -18,20 +25,19 @@
         <button title="refresh game" data-source="https://commons.wikimedia.org/wiki/File:Refresh_icon.svg" class="refresh-btn button" onclick="loadGame()">
           <img width="32" alt="Refresh icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Refresh_icon.svg/32px-Refresh_icon.svg.png">
         </button>
-        <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-app.js"></script>
-        <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-firestore.js"></script>
-        <script>
-            // Initialize Cloud Firestore through Firebase
-            firebase.initializeApp({
-            apiKey: 'AIzaSyDYppSoak6AUYDbYdNozfgchNW7eejPUzY',
-            authDomain: 'codenames-b6333.firebaseapp.com',
-            projectId: 'codenames-b6333'
-            });
-            const db = firebase.firestore();
-        </script>
     </div>
-    <div class="codenames"></div>
-    <button class="spymaster button" onclick="loadSpyMasterView()">Enable Spy Master</button>
-<script src="codenames.js"></script>
+    <div class="codenames" disabled></div>
+    <script src="codenames.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-firestore.js"></script>
+    <script>
+        // Initialize Cloud Firestore through Firebase
+        firebase.initializeApp({
+        apiKey: 'AIzaSyDYppSoak6AUYDbYdNozfgchNW7eejPUzY',
+        authDomain: 'codenames-b6333.firebaseapp.com',
+        projectId: 'codenames-b6333'
+        });
+        const db = firebase.firestore();
+    </script>
 </body>
 </html>

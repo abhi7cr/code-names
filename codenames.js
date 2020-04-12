@@ -1,31 +1,3 @@
-
-let name
-let words = []
-// Check to see if its an invited session
-let session_id = window.location.hash
-let session
-if (session_id) {
-	session_id = session_id.slice(1)
-	db.collection("sessions").doc(session_id)
-	.onSnapshot(function(doc){
-		if (!name) {
-		  document.querySelector('.join').style.display = 'block'
-		}
-		session = doc.data()
-		console.log("Current data: ", session);
-		const playersList = document.querySelector('.players')
-		session.players.forEach(p => {
-			const li = document.createElement('li')
-			li.innerText = p.name
-			playersList.appendChild(li)
-		})
-	})
-} else {
-  document.querySelector('.inviteInfo').style.display = 'block'
-  document.querySelector('.start').style.display = 'block'
-}
-
-
 //word list
 const word_dict = [
 	'sea',
@@ -371,13 +343,12 @@ const word_dict = [
 
 ]    
 
-let blue = new Set()
-let red = new Set()
-let neutral = new Set()
-let black = new Set()
-let words = []
-let wordTeamDict = {}
-let currentTeam = true // blue
+let blue = {}
+let red = {}
+let neutral = {}
+let black = {}
+
+let currentTeam = 1 // blue
 const BLUE = 'blue'
 const RED = 'red'
 const NEUTRAL = 'neutral'
@@ -385,16 +356,16 @@ const BLACK = 'black'
 let spyMasterView
 let randomNum
 let currentTeamEnum = {
-	[true]: BLUE,
-	[false]: RED
+	1: BLUE,
+	0: RED
 } 
-let TEAM_STYLE = {
+const TEAM_STYLE = {
 	BLUE,
 	RED,
 	NEUTRAL,
 	BLACK
 }
-let TEAM_NAME = {
+const TEAM_NAME = {
 	BLUE: 'B',
 	RED: 'R',
 	NEUTRAL: 'N',
@@ -405,27 +376,42 @@ let elements = {}
 const base62 = 'abcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
 const base62Length = base62.length
 
+let teams = {
+	[TEAM_STYLE.BLUE]: {},
+	[TEAM_STYLE.RED]: {},
+	[TEAM_STYLE.BLACK]: {},
+	[TEAM_STYLE.NEUTRAL]: {}
+}
 
-function validateName () {
-  const nameFromInput = document.querySelector('.name').value
-  if (nameFromInput && nameFromInput.trim()) {
-	name = nameFromInput
-	session_id ? document.querySelector('.join').disabled = false : document.querySelector('.start').disabled = false
+const GAME_STATES = {
+  JOINING: 0,
+  PLAYING: 1,
+  STOPPED: 2
+}
+
+let name
+let words = []
+let wordTeamDict = {}
+let gameLoaded = false
+let clues
+// Check to see if its an invited session
+let session_id = window.location.hash
+let session
+let clue
+
+function validateName (className) {
+  const textFromInput = document.querySelector('.name').value
+  if (textFromInput && textFromInput.trim()) {
+	if (className === 'start') name = textFromInput
+	else if (className === 'giveClue') clue = textFromInput
+
+	if (session_id) className = 'join'
+
+	document.querySelector(`.${className}`).disabled = false
   }
 }
 
-function join () {
-	let blueTeam = session.players.map(p => p.team).length
-	let redTeam = session.players.map(p => !p.team).length
-	db.collection("sessions").doc(session_id).set({
-		players: [...session.players, {name, team: blueTeam > redTeam ? 0 : 1 }],
-	  }, {merge: true}).then(function(docRef) {
-		  console.log("started new session", docRef.id)
-	  })
-	  .catch(function(err) {
-		  console.error("Error starting new session", error)
-	  })
-}
+// Game states:
 
 function start () {
 	if (session_id) {
@@ -443,26 +429,67 @@ function start () {
 	db.collection("sessions").doc(session_id).set({
 	  owner: name,
 	  players: [{name, team: 1}],
-	  words
-	}).then(function(docRef) {
-		console.log("started new session", docRef.id)
+	  words,
+	  wordTeamDict,
+	  spyMasters: [],
+	  winner: null,
+	  status: GAME_STATES.JOINING
+	}).then(function() {
+		console.log("started new session")
+		document.querySelector('.play').style.display = 'block'
+		listenForUpdates()
 	})
 	.catch(function(err) {
 		console.error("Error starting new session", error)
 	})
 }
 
+function join () {
+	let blueTeamCount = session.players.filter(p => !!p.team).length
+	let redTeamCount = session.players.filter(p => !p.team).length
+	db.collection("sessions").doc(session_id).set({
+		players: [...session.players, {name, team: blueTeamCount > redTeamCount ? 0 : 1 }],
+	  }, {merge: true}).then(function(_) {
+		  console.log("started new session")
+	  })
+	  .catch(function(err) {
+		  console.error("Error starting new session", err)
+	  })
+}
+
+function play () {
+	let spyMasters = chooseSpyMasters()
+	db.collection("sessions").doc(session_id).set({
+		spyMasters,
+		status: GAME_STATES.PLAYING
+	  },{ merge: true }).then(function(docRef) {
+		  console.log("playing new session")
+		  document.querySelector('.codenames').disabled = false
+	  })
+	  .catch(function(err) {
+		  console.error("Error starting new session", err)
+	  })
+}
+
+function giveClue () {
+	db.collection("sessions").doc(session_id).set({
+	  clues: [...clues, clue]
+	}).then(function (_) {
+
+	}).catch(function(err){
+		console.error("Error giving new clue", err)
+	})
+}
+
+// Set up board
 function loadGame (blueStarts = true) {
-    if (!words.length) {
-		
+	if (!words.length) {
 		const count = 25
 		let arr = new Array(count)
 		spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
 		if (spyMasterView) {
 			document.querySelector('.spymaster').style.display = 'none'
 			document.querySelector('.info').style.display = 'none'
-			const cachedItems = localStorage.getItem('arr')
-			arr = JSON.parse(cachedItems)
 			wordTeamDict = JSON.parse(localStorage.getItem('wordTeamDict'))
 			words = JSON.parse(localStorage.getItem('words'))
 			localStorage.clear()
@@ -500,34 +527,29 @@ function loadGame (blueStarts = true) {
 				const w = words[i]
 				switch(a) {
 					case TEAM_NAME.BLUE:
-						blue.add(w)
-						wordTeamDict[w] = [TEAM_STYLE.BLUE, blue]
+						teams[TEAM_STYLE.BLUE][w] = 1
+						wordTeamDict[w] = TEAM_STYLE.BLUE
 						break
 					case TEAM_NAME.RED:
-						red.add(w)
-						wordTeamDict[w] = [TEAM_STYLE.RED, red]
+						teams[TEAM_STYLE.RED][w] = 1
+						wordTeamDict[w] = TEAM_STYLE.RED
 						break
 					case TEAM_NAME.NEUTRAL:
-						neutral.add(w)
-						wordTeamDict[w] = [TEAM_STYLE.NEUTRAL, neutral]
+						teams[TEAM_STYLE.NEUTRAL][w] = 1
+						wordTeamDict[w] = TEAM_STYLE.NEUTRAL
 						break
 					case TEAM_NAME.BLACK:
-						black.add(w)
-						wordTeamDict[w] = [TEAM_STYLE.BLACK, black]
+						teams[TEAM_STYLE.BLACK][w] = 1
+						wordTeamDict[w] = TEAM_STYLE.BLACK
 						break
 				}
 			})
-			// cache in local storage
-			localStorage.setItem('words', JSON.stringify(words))
-			localStorage.setItem('arr', JSON.stringify(arr))
-			localStorage.setItem('blue', JSON.stringify(blue))
-			localStorage.setItem('red', JSON.stringify(red))
-			localStorage.setItem('neutral', JSON.stringify(neutral))
-			localStorage.setItem('black', JSON.stringify(black))
-			localStorage.setItem('wordTeamDict', JSON.stringify(wordTeamDict))
 		}
-
 	}
+	// cache in local storage
+	localStorage.setItem('words', JSON.stringify(words))
+	localStorage.setItem('wordTeamDict', JSON.stringify(wordTeamDict))
+
 	drawGrid(words)
 	setCurrentTeam()
 }
@@ -537,45 +559,43 @@ function drawGrid (words) {
 	Array(...codeNamesDiv.children).forEach(c => codeNamesDiv.removeChild(c))
     let fragment = document.createDocumentFragment()
     words.forEach(w => {
-        let wordDiv = document.createElement('div')
-				wordDiv.classList.add('word')
-				if (!spyMasterView) {
-					wordDiv.addEventListener('click', function (e) {
-							let [teamBelongingTo, team] = wordTeamDict[w]
-							wordDiv.classList.add(teamBelongingTo)
-							team.delete(w)
-							debugger
-							if (teamBelongingTo === 'black') {
-								alert(currentTeam ? 'Team blue has lost the game' : 'Team red has lost the game')
-								return
-							}
-							if (team.size === 0) {
-								alert(`Team ${teamBelongingTo} has won the game! :)`)
-							}
-							if (teamBelongingTo === TEAM_STYLE.NEUTRAL || teamBelongingTo != currentTeamEnum[currentTeam]) {
-// 								const shakeAnimation = [
-// 									{transform: 'rotate(2deg)'},
-// 									{transform: 'rotate(-2deg)'},
-// 									{transform: 'rotate(1deg)'},
-// 									{transform: 'rotate(-1deg)'}
-// 								]
-// 								wordDiv.animate(shakeAnimation, {
-// 									duration: 1000,
-// 									easing: 'ease-in-out'
-// 								})
-								endTurn()
-							}
-							
-					})
-				}
+		let wordDiv = document.createElement('div')
+		wordDiv.classList.add('word')
+		if (!spyMasterView) {
+			wordDiv.addEventListener('click', function (e) {
+					let teamBelongingTo = wordTeamDict[w]
+					wordDiv.classList.add(teamBelongingTo)
+					delete teams[teamBelongingTo][w]
+					if (teamBelongingTo === 'black') {
+						alert(currentTeam ? 'Team blue has lost the game' : 'Team red has lost the game')
+						return
+					}
+					if (team.size === 0) {
+						alert(`Team ${teamBelongingTo} has won the game! :)`)
+					}
+					if (teamBelongingTo === TEAM_STYLE.NEUTRAL || teamBelongingTo != currentTeamEnum[currentTeam]) {
+						endTurn()
+					}			
+			})
+		}
 				wordDiv.innerText = w.toUpperCase()
 				elements[w] = wordDiv
         fragment.appendChild(wordDiv)
     })
-		codeNamesDiv.appendChild(fragment)
-		if (spyMasterView) {
-			toggleSpyMaster()
-		}
+	codeNamesDiv.appendChild(fragment)
+	if (spyMasterView) {
+		toggleSpyMaster()
+	}
+	gameLoaded = true
+}
+
+function chooseSpyMasters () {
+	let players = session.players
+	let blueTeam = players.filter(p => !!p.team)
+	let redTeam = players.filter(p => !p.team)
+	let blueSpyMaster = blueTeam[Math.floor(Math.random() * blueTeam.length)]
+	let redSpyMaster = redTeam[Math.floor(Math.random() * redTeam.length)]
+	return [blueSpyMaster, redSpyMaster]
 }
 
 function loadSpyMasterView (_) {
@@ -584,7 +604,7 @@ function loadSpyMasterView (_) {
 }
 function toggleSpyMaster (_) {
 	words.forEach(w => {
-		let [teamBelongingTo, _] = wordTeamDict[w]
+		let teamBelongingTo = wordTeamDict[w]
 		let el = elements[w]
 		el.classList.add(teamBelongingTo)
 	})
@@ -605,4 +625,61 @@ function setCurrentTeam () {
 }
 
 document.querySelector('.endTurn').addEventListener('click', endTurn)
-loadGame()
+
+function onSnapshotCb (doc) {
+	if (!name) {
+		document.querySelector('.join').style.display = 'block'
+	  }
+	  session = doc.data()
+	  let players = session.players
+	  if (!players.some(p => p.name === name)) {
+		  // Check if the game has already begun
+		  if (session.status === GAME_STATES.PLAYING) {
+			  console.warn('The game is already in progress. Please wait till the next session is open')
+			  return
+		  }
+	  }
+	  let [team] = players.find(p => p.name === name)
+	  const welcomeMsg = document.querySelector('.welcome')
+	  if (!welcomeMsg.innerText) {
+		  welcomeMsg.innerText = `Welcome ${name}. You are part of team ${currentTeamEnum[team]}`
+	  }
+	  let spyMasters = session.spyMasters
+	  clues = session.clues
+	  if (spyMasters.find(s => s.name === name) !== undefined) {
+		  document.querySelector('.spymaster').style.display = 'block'
+		  document.querySelector('.')
+	  }
+	  words = session.words
+	  wordTeamDict = session.wordTeamDict
+	  console.log("Current data: ", session)
+	  const playersList = document.querySelector('.players')
+	  new Array(...playersList.children).forEach(c => playersList.removeChild(c))
+	  session.players.sort((a,b) => {
+		 b.team > a.team
+	  })
+	  session.players.forEach(p => {
+		  const li = document.createElement('li')
+		  li.innerText = p.name
+		  li.style.color = p.team ? '#34a5eb' : '#eb4934'
+		  playersList.appendChild(li)
+	  })
+	  if (!gameLoaded) loadGame()
+}
+
+function listenForUpdates () {
+	db.collection("sessions").doc(session_id).onSnapshot(onSnapshotCb)
+}
+
+if (session_id) {
+	session_id = session_id.slice(1)
+	listenForUpdates()
+} else {
+  document.querySelector('.inviteInfo').style.display = 'block'
+  document.querySelector('.start').style.display = 'block'
+  loadGame()
+}
+
+
+
+
