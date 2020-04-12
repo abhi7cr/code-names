@@ -348,17 +348,23 @@ let red = {}
 let neutral = {}
 let black = {}
 
-let currentTeam = 1 // blue
+const RED_COLOR = '#eb4934'
+const BLUE_COLOR = '#34a5eb'
 const BLUE = 'blue'
 const RED = 'red'
 const NEUTRAL = 'neutral'
 const BLACK = 'black'
 let spyMasterView
-let randomNum
+
+const BLUE_TEAM = 1
+const RED_TEAM = 0
 let currentTeamEnum = {
-	1: BLUE,
-	0: RED
+	[BLUE_TEAM]: BLUE,
+	[RED_TEAM]: RED
 } 
+let currentTeam = BLUE_TEAM
+let players
+let player
 const TEAM_STYLE = {
 	BLUE,
 	RED,
@@ -371,6 +377,7 @@ const TEAM_NAME = {
 	NEUTRAL: 'N',
 	BLACK: 'BK'
 }
+
 let showWords = true
 let elements = {}
 const base62 = 'abcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
@@ -393,11 +400,14 @@ let name
 let words = []
 let wordTeamDict = {}
 let gameLoaded = false
-let clues
 // Check to see if its an invited session
 let session_id = window.location.hash
 let session
 let clue
+let isSpyMaster = false
+let isAdmin = false
+let timerEl = null
+let spyMasters
 
 function validateName (className) {
   const textFromInput = document.querySelector('.name').value
@@ -428,11 +438,14 @@ function start () {
 
 	db.collection("sessions").doc(session_id).set({
 	  owner: name,
-	  players: [{name, team: 1}],
+	  players: [{name, team: BLUE_TEAM}],
 	  words,
 	  wordTeamDict,
 	  spyMasters: [],
+	  admins: [],
 	  winner: null,
+	  clue: '',
+	  currentTeam: BLUE_TEAM,
 	  status: GAME_STATES.JOINING
 	}).then(function() {
 		console.log("started new session")
@@ -445,10 +458,10 @@ function start () {
 }
 
 function join () {
-	let blueTeamCount = session.players.filter(p => !!p.team).length
-	let redTeamCount = session.players.filter(p => !p.team).length
+	let blueTeamCount = players.filter(p => !!p.team).length
+	let redTeamCount = players.filter(p => !p.team).length
 	db.collection("sessions").doc(session_id).set({
-		players: [...session.players, {name, team: blueTeamCount > redTeamCount ? 0 : 1 }],
+		players: [...players, {name, team: blueTeamCount > redTeamCount ? 0 : 1 }],
 	  }, {merge: true}).then(function(_) {
 		  console.log("started new session")
 	  })
@@ -458,13 +471,15 @@ function join () {
 }
 
 function play () {
-	let spyMasters = chooseSpyMasters()
+	spyMasters = chooseSpyMasters()
+	admins = chooseAdmins()
 	db.collection("sessions").doc(session_id).set({
 		spyMasters,
+		admins,
 		status: GAME_STATES.PLAYING
 	  },{ merge: true }).then(function(docRef) {
 		  console.log("playing new session")
-		  document.querySelector('.codenames').disabled = false
+		  startNewTimer()
 	  })
 	  .catch(function(err) {
 		  console.error("Error starting new session", err)
@@ -472,10 +487,10 @@ function play () {
 }
 
 function giveClue () {
+	if (player[team] !== currentTeam) return
 	db.collection("sessions").doc(session_id).set({
-	  clues: [...clues, clue]
-	}).then(function (_) {
-
+	  clue
+	}, {merge: true}).then(function (_) {
 	}).catch(function(err){
 		console.error("Error giving new clue", err)
 	})
@@ -486,27 +501,19 @@ function loadGame (blueStarts = true) {
 	if (!words.length) {
 		const count = 25
 		let arr = new Array(count)
-		spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
-		if (spyMasterView) {
-			document.querySelector('.spymaster').style.display = 'none'
-			document.querySelector('.info').style.display = 'none'
-			wordTeamDict = JSON.parse(localStorage.getItem('wordTeamDict'))
-			words = JSON.parse(localStorage.getItem('words'))
-			localStorage.clear()
-		}
-		else {
-				{
-					let min = 0
-					let max = word_dict.length - 1
-					while (min < count) {
-						let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
-						let temp = word_dict[randomIndex]
-						word_dict[randomIndex] = word_dict[min]
-						word_dict[min] = temp
-						words.push(temp)
-						min++
-					}
+		if (!setupSpyMasterViewIfRequired()) {
+			{
+				let min = 0
+				let max = word_dict.length - 1
+				while (min < count) {
+					let randomIndex =  Math.ceil(Math.random() * (max - min)) + min //0-24
+					let temp = word_dict[randomIndex]
+					word_dict[randomIndex] = word_dict[min]
+					word_dict[min] = temp
+					words.push(temp)
+					min++
 				}
+			}
 			let bLen = blueStarts ? 9 : 8
 			let rLen = blueStarts ? 8 : 9
 			let nLen = 7
@@ -546,6 +553,7 @@ function loadGame (blueStarts = true) {
 			})
 		}
 	}
+
 	// cache in local storage
 	localStorage.setItem('words', JSON.stringify(words))
 	localStorage.setItem('wordTeamDict', JSON.stringify(wordTeamDict))
@@ -590,12 +598,20 @@ function drawGrid (words) {
 }
 
 function chooseSpyMasters () {
-	let players = session.players
 	let blueTeam = players.filter(p => !!p.team)
 	let redTeam = players.filter(p => !p.team)
 	let blueSpyMaster = blueTeam[Math.floor(Math.random() * blueTeam.length)]
 	let redSpyMaster = redTeam[Math.floor(Math.random() * redTeam.length)]
 	return [blueSpyMaster, redSpyMaster]
+}
+
+function chooseAdmins () {
+	const nonSpyMasters = players.filter(p => !spyMasters.some(s => s.name === p.name))
+	let blueTeam = nonSpyMasters.filter(p => !!p.team)
+	let redTeam = nonSpyMasters.filter(p => !p.team)
+	let blueAdmin = blueTeam[Math.floor(Math.random() * blueTeam.length)]
+	let redAdmin = redTeam[Math.floor(Math.random() * redTeam.length)]
+	return [blueAdmin, redAdmin]
 }
 
 function loadSpyMasterView (_) {
@@ -613,7 +629,10 @@ function toggleSpyMaster (_) {
 
 function endTurn (_) {
 	currentTeam = !currentTeam
-	setCurrentTeam()
+	document.querySelector(".clue").style.disabled = true
+	db.collection("sessions").doc(session_id).set({
+	  currentTeam
+	}, {merge: true})
 }
 
 function setCurrentTeam () {
@@ -624,6 +643,13 @@ function setCurrentTeam () {
 	currentTeamEl.classList.add(name)
 }
 
+function startNewTimer () {
+	if (timerEl !== null) document.removeChild(timerEl)
+	const template = document.getElementById('x-timer')
+	timerEl = template.content.cloneNode(true)
+	document.querySelector('.invite').appendChild(timerEl)
+}
+
 document.querySelector('.endTurn').addEventListener('click', endTurn)
 
 function onSnapshotCb (doc) {
@@ -631,7 +657,7 @@ function onSnapshotCb (doc) {
 		document.querySelector('.join').style.display = 'block'
 	  }
 	  session = doc.data()
-	  let players = session.players
+	  players = session.players
 	  if (!players.some(p => p.name === name)) {
 		  // Check if the game has already begun
 		  if (session.status === GAME_STATES.PLAYING) {
@@ -639,29 +665,42 @@ function onSnapshotCb (doc) {
 			  return
 		  }
 	  }
-	  let [team] = players.find(p => p.name === name)
-	  const welcomeMsg = document.querySelector('.welcome')
-	  if (!welcomeMsg.innerText) {
-		  welcomeMsg.innerText = `Welcome ${name}. You are part of team ${currentTeamEnum[team]}`
+	  currentTeam = session.currentTeam
+	  setCurrentTeam()
+
+	  player = players.find(p => p.name === name)
+	  if (player) {
+		const welcomeMsg = document.querySelector('.welcome')
+		if (!welcomeMsg.innerText) {
+			welcomeMsg.innerText = `Welcome ${name}. You are part of team ${currentTeamEnum[player.team]}`
+		}
 	  }
-	  let spyMasters = session.spyMasters
-	  clues = session.clues
-	  if (spyMasters.find(s => s.name === name) !== undefined) {
+
+	  spyMasters = session.spyMasters
+	  isSpyMaster = spyMasters.find(s => s.name === name)
+	  clue = session.clue
+	  if (isSpyMaster !== undefined) {
 		  document.querySelector('.spymaster').style.display = 'block'
-		  document.querySelector('.')
+		  document.querySelector('.show-clue').style.display = 'none'
+	  } else {
+		document.querySelector('.show-clue').innerText = clue
 	  }
+
+	  admins = session.admins
+	  isAdmin = admins.some(a => a.name === name)
 	  words = session.words
 	  wordTeamDict = session.wordTeamDict
 	  console.log("Current data: ", session)
 	  const playersList = document.querySelector('.players')
 	  new Array(...playersList.children).forEach(c => playersList.removeChild(c))
 	  session.players.sort((a,b) => {
-		 b.team > a.team
+		 b.team - a.team
 	  })
 	  session.players.forEach(p => {
 		  const li = document.createElement('li')
-		  li.innerText = p.name
-		  li.style.color = p.team ? '#34a5eb' : '#eb4934'
+		  li.innerText = 
+			`${p.name} ${admins.some(a => a.name === p.name) ? `(Admin)` : ``} ${spyMasters.some(s => s.name === p.name) ? `(Spymaster)`: ``}`
+		  li.style.color = p.team ? BLUE_COLOR : RED_COLOR
 		  playersList.appendChild(li)
 	  })
 	  if (!gameLoaded) loadGame()
@@ -671,14 +710,77 @@ function listenForUpdates () {
 	db.collection("sessions").doc(session_id).onSnapshot(onSnapshotCb)
 }
 
+function setupSpyMasterViewIfRequired () {
+	spyMasterView = JSON.parse(localStorage.getItem('spyMasterView'))
+	if (spyMasterView) {
+		document.querySelector('.spymaster').style.display = 'none'
+		document.querySelector('.info').style.display = 'none'
+		wordTeamDict = JSON.parse(localStorage.getItem('wordTeamDict'))
+		words = JSON.parse(localStorage.getItem('words'))
+		localStorage.clear()
+		return true
+	}
+	return false
+}
+
 if (session_id) {
 	session_id = session_id.slice(1)
-	listenForUpdates()
+	if(!setupSpyMasterViewIfRequired()) listenForUpdates()
 } else {
   document.querySelector('.inviteInfo').style.display = 'block'
   document.querySelector('.start').style.display = 'block'
   loadGame()
 }
+
+/**
+ * Custom timer component
+ * attributes: time (seconds), on-timer-end callback function
+ */
+class Timer extends HTMLElement {
+	constructor () {
+		super()
+		const shadow = this.attachShadow({mode: 'open'})
+		let time = this.getAttribute('time')
+		this.onTimerEndCallback = this.getAttribute('on-timer-end')
+		const label = document.createElement('label')
+		const style = document.createElement('style')
+		style.textContent = `
+		 label {
+			 padding: 1rem;
+		 }
+		`
+		const timer_event = new CustomEvent('timer')
+		function updateTime () {
+			label.innerText = `${time} seconds left`
+			if (time <= 15) label.style.color = RED_COLOR
+		}
+		const oneSecondInMillisecond = 1000
+		setTimeout(() => {
+			this.dispatchEvent(timer_event)
+		}, time * oneSecondInMillisecond)
+		const id =  setInterval(() => {
+			time-- 
+			updateTime()
+			if (time === 0) clearInterval(id)
+		}, oneSecondInMillisecond)
+
+		updateTime()
+
+		shadow.appendChild(style)
+		shadow.appendChild(label)
+	}
+
+	connectedCallback() { 
+	  this.addEventListener('timer', function (e) {
+		self[this.onTimerEndCallback]()
+	  })
+	}
+}
+
+customElements.define('x-timer', Timer)
+
+
+
 
 
 

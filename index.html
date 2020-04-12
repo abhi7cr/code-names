@@ -3,6 +3,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <h3 class="welcome"></h3>
     <h3 class="inviteInfo" style="display: none;">Invite friends to your session by clicking start, and sharing the above url</h3>
     <div class="invite">  
         <input type="text" style="width:200px;" class="name" name="name" placeholder="enter a funny name"  onkeyup="validateName('start')"/>
@@ -12,9 +13,20 @@
         <button class="stop button" onclick="stop()" style="display: none;" disabled>Stop</button>
         <div class="spymasterContainer" style="display: none;">
             <button class="spymaster button" onclick="loadSpyMasterView()">Enable Spy Master</button>
+            <label for="clue">
+                Clue:
+            </label>
             <input type="text" style="width:200px;" name="clue" onkeyup="validateName('giveClue')" placeholder="type your clue here"/>
+            <label for="numWords">
+                Number of words associated with this clue:
+            </label>
+            <input type="number" style="width:100px" name="numWords" value="1"/>
             <button class="giveClue button" onclick="giveClue()" disabled>Submit</button>
         </div>
+        <label class="show-clue"></label>
+        <template id="x-timer">
+            <x-timer style="display: none;" class="timer" time="60" on-timer-end="endTurn"></x-timer>
+        </template>
     </div>
     <label>Players:</label>
     <ul class="players"></ul>
@@ -26,8 +38,7 @@
           <img width="32" alt="Refresh icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Refresh_icon.svg/32px-Refresh_icon.svg.png">
         </button>
     </div>
-    <div class="codenames" disabled></div>
-    <script src="codenames.js"></script>
+    <div class="codenames"></div>
     <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/7.14.0/firebase-firestore.js"></script>
     <script>
@@ -39,5 +50,6 @@
         });
         const db = firebase.firestore();
     </script>
+    <script src="codenames.js"></script>
 </body>
 </html>

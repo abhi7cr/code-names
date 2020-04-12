@@ -50,6 +50,7 @@ body {
     grid-template-rows: repeat(5, 15vh);
     grid-gap: 1rem;
     margin: 1rem;
+    pointer-events: none;
 }
 
 .word {
