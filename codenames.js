@@ -748,7 +748,7 @@ function onSnapshotCb (doc) {
 
 	if (isSpyMaster) {
 		document.querySelector('.spymaster').style.display = 'block'
-		document.querySelector('.showClue').style.display = 'none'
+		document.querySelector('.clueContainer').style.display = 'none'
 		document.querySelector('.spymasterContainer').style.display = 'grid'
 	} else {
 		document.querySelector('.showClue').innerText = clue
