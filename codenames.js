@@ -414,16 +414,17 @@ let timerGuessEl = null
 let spyMasters = []
 let admins = []
 let currentState
+let timerStart
 
-function validateName (className) {
-  const textFromInput = document.querySelector('.name').value
+function validateName (btnClass, inputClass) {
+  const textFromInput = document.querySelector(`.${inputClass}`).value
   if (textFromInput && textFromInput.trim()) {
-	if (className === 'start') {
+	if (btnClass === 'start') {
 		name = textFromInput
-		if (session_id) className = 'join'
+		if (session_id) btnClass = 'join'
 	}
-	else if (className === 'giveClue') clue = textFromInput
-	document.querySelector(`.${className}`).disabled = false
+	else if (btnClass === 'giveClue') clue = textFromInput
+	document.querySelector(`.${btnClass}`).disabled = false
   }
 }
 
@@ -452,7 +453,8 @@ function start () {
 	  winner: null,
 	  clue: '',
 	  currentTeam: BLUE_TEAM,
-	  status: GAME_STATES.JOINING
+	  status: GAME_STATES.JOINING,
+	  timerStart: null
 	}).then(function() {
 		console.log("started new session")
 		document.querySelector('.play').style.display = 'block'
@@ -482,7 +484,8 @@ function play () {
 	db.collection("sessions").doc(session_id).set({
 		spyMasters,
 		admins,
-		status: GAME_STATES.WAITING_FOR_CLUE
+		status: GAME_STATES.WAITING_FOR_CLUE,
+		timerStart: Date.now()
 	  },{ merge: true }).then(function(docRef) {
 		  console.log("playing new session")
 	  })
@@ -495,7 +498,8 @@ function giveClue () {
 	if (player.team !== currentTeam) return
 	db.collection("sessions").doc(session_id).set({
 	  clue,
-	  status: GAME_STATES.CLUE_GIVEN
+	  status: GAME_STATES.CLUE_GIVEN,
+	  timerStart: Date.now()
 	}, {merge: true}).then(function (_) {
 	}).catch(function(err){
 		console.error("Error giving new clue", err)
@@ -578,7 +582,7 @@ function drawGrid (words) {
 		wordDiv.id = w
 		if (!spyMasterView) {
 			wordDiv.addEventListener('click', function (e) {
-				if (!isAdmin || player.team !== currentTeam) {
+				if (!isAdmin || player.team !== currentTeam || currentState !== GAME_STATES.CLUE_GIVEN) {
 					return
 				}
 				let teamBelongingTo = wordTeamDict[w]
@@ -661,9 +665,9 @@ function toggleSpyMaster (_) {
 
 function endTurn (_) {
 	currentTeam = !currentTeam
-	document.querySelector(".clue").style.disabled = true
+	document.querySelector(".giveClue").disabled = true
 	db.collection("sessions").doc(session_id).set({
-	  currentTeam,
+	  currentTeam: currentTeam ? BLUE_TEAM : RED_TEAM,
 	  status: GAME_STATES.WAITING_FOR_CLUE
 	}, {merge: true})
 }
@@ -677,19 +681,29 @@ function setCurrentTeam () {
 }
 
 function startNewTimerForClueGiver () {
-	const inviteEl = document.querySelector('.invite')
-	if (timerEl !== null) inviteEl.removeChild(timerEl)
-	const template = document.getElementById('x-timer')
-	timerEl = template.content.cloneNode(true)
+    const inviteEl = clearTimerForClueGiver()	
+	const timerEl = document.createElement('x-timer')
+	timerEl.setAttribute('on-timer-end', 'endTurn')
 	inviteEl.appendChild(timerEl)
 }
 
 function startNewTimerForGuessers () {
-	const inviteEl = document.querySelector('.invite')
-	if (timerGuessEl !== null) inviteEl.removeChild(timerGuessEl)
-	const template = document.getElementById('x-timer')
-	timerGuessEl = template.content.cloneNode(true)
+	const inviteEl = clearTimerForGuessers()
+	const timerGuessEl = document.createElement('x-timer')
+	timerGuessEl.setAttribute('on-timer-end', 'endTurn')
 	inviteEl.appendChild(timerGuessEl)
+}
+
+function clearTimerForClueGiver () {
+	const inviteEl = document.querySelector('.invite')
+	if (timerEl !== null) timerEl.remove()
+	return inviteEl
+}
+
+function clearTimerForGuessers () {
+	const inviteEl = document.querySelector('.invite')
+	if (timerGuessEl !== null) timerGuessEl.remove()
+	return inviteEl
 }
 
 document.querySelector('.endTurn').addEventListener('click', endTurn)
@@ -714,6 +728,7 @@ function onSnapshotCb (doc) {
 			return
 		}
 	}
+
 	currentTeam = session.currentTeam
 	setCurrentTeam()
 
@@ -733,10 +748,10 @@ function onSnapshotCb (doc) {
 
 	if (isSpyMaster) {
 		document.querySelector('.spymaster').style.display = 'block'
-		document.querySelector('.show-clue').style.display = 'none'
-		document.querySelector('.spymasterContainer').style.display = 'block'
+		document.querySelector('.showClue').style.display = 'none'
+		document.querySelector('.spymasterContainer').style.display = 'grid'
 	} else {
-	document.querySelector('.show-clue').innerText = clue
+		document.querySelector('.showClue').innerText = clue
 	}
 
 	if (!admins.length) {
@@ -766,9 +781,17 @@ function onSnapshotCb (doc) {
 		playersList.appendChild(li)
 		})
 	players = updated_players
-
-	if (currentState === GAME_STATES.WAITING_FOR_CLUE) startNewTimerForClueGiver()
-	if (currentState === GAME_STATES.CLUE_GIVEN) startNewTimerForGuessers()
+	timerStart = session.timerStart
+	if (currentState === GAME_STATES.WAITING_FOR_CLUE) {
+		clearTimerForGuessers()
+		document.querySelector('.clueInfo').innerText = `Waiting for ${spyMasters.find(s => s.team === currentTeam).name} to give clue`
+		startNewTimerForClueGiver()
+	}
+	if (currentState === GAME_STATES.CLUE_GIVEN) {
+		clearTimerForClueGiver()
+		document.querySelector('.clueInfo').innerText = `Waiting for team ${currentTeamEnum[currentTeam]}to guess`
+		startNewTimerForGuessers()
+	}
 
 	if (!gameLoaded) loadGame()
 }
@@ -808,7 +831,8 @@ class Timer extends HTMLElement {
 	constructor () {
 		super()
 		const shadow = this.attachShadow({mode: 'open'})
-		let time = this.getAttribute('time')
+		let time = this.getAttribute('time') || '60'
+		time = parseInt(time)
 		this.onTimerEndCallback = this.getAttribute('on-timer-end')
 		const label = document.createElement('label')
 		const style = document.createElement('style')
@@ -823,13 +847,15 @@ class Timer extends HTMLElement {
 			if (time <= 15) label.style.color = RED_COLOR
 		}
 		const oneSecondInMillisecond = 1000
-		setTimeout(() => {
+		this.cancelTimeoutId = setTimeout(() => {
 			this.dispatchEvent(timer_event)
 		}, time * oneSecondInMillisecond)
-		const id =  setInterval(() => {
-			time-- 
+	    this.cancelIntervalId = setInterval(() => {
+			const elapsedInMs = Date.now() - timerStart
+			const seconds = elapsedInMs / 1000
+			time = 60 - seconds.toPrecision(2)
+			if (time <= 0) clearInterval(this.cancelIntervalId)
 			updateTime()
-			if (time === 0) clearInterval(id)
 		}, oneSecondInMillisecond)
 
 		updateTime()
@@ -842,6 +868,17 @@ class Timer extends HTMLElement {
 	  this.addEventListener('timer', function (e) {
 		self[this.onTimerEndCallback]()
 	  })
+	}
+
+	cancelTimer () {
+		clearInterval(this.cancelIntervalId)
+		clearTimeout(this.cancelTimeoutId)
+	}
+
+	attributeChangedCallback(attrName, _, newValue) {
+		if (attrName === 'on-timer-end') {
+			this.onTimerEndCallback = newValue
+		}
 	}
 }
 
