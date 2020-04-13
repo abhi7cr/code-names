@@ -354,7 +354,7 @@ const BLUE = 'blue'
 const RED = 'red'
 const NEUTRAL = 'neutral'
 const BLACK = 'black'
-let spyMasterView
+let spyMasterView = false
 
 const BLUE_TEAM = 1
 const RED_TEAM = 0
@@ -363,7 +363,7 @@ let currentTeamEnum = {
 	[RED_TEAM]: RED
 } 
 let currentTeam = BLUE_TEAM
-let players
+let players = []
 let player
 const TEAM_STYLE = {
 	BLUE,
@@ -393,7 +393,10 @@ let teams = {
 const GAME_STATES = {
   JOINING: 0,
   PLAYING: 1,
-  STOPPED: 2
+  STOPPED: 2,
+  WAITING_FOR_CLUE: 3,
+  CLUE_GIVEN: 4,
+  DONE: 5
 }
 
 let name
@@ -407,22 +410,24 @@ let clue
 let isSpyMaster = false
 let isAdmin = false
 let timerEl = null
-let spyMasters
+let timerGuessEl = null
+let spyMasters = []
+let admins = []
+let currentState
 
 function validateName (className) {
   const textFromInput = document.querySelector('.name').value
   if (textFromInput && textFromInput.trim()) {
-	if (className === 'start') name = textFromInput
+	if (className === 'start') {
+		name = textFromInput
+		if (session_id) className = 'join'
+	}
 	else if (className === 'giveClue') clue = textFromInput
-
-	if (session_id) className = 'join'
-
 	document.querySelector(`.${className}`).disabled = false
   }
 }
 
 // Game states:
-
 function start () {
 	if (session_id) {
 	  console.warn('Already in a session. Please stop it to start a new one.')
@@ -441,6 +446,7 @@ function start () {
 	  players: [{name, team: BLUE_TEAM}],
 	  words,
 	  wordTeamDict,
+	  teams,
 	  spyMasters: [],
 	  admins: [],
 	  winner: null,
@@ -471,15 +477,14 @@ function join () {
 }
 
 function play () {
-	spyMasters = chooseSpyMasters()
-	admins = chooseAdmins()
+	let spyMasters = chooseSpyMasters()
+	let admins = chooseAdmins(spyMasters)
 	db.collection("sessions").doc(session_id).set({
 		spyMasters,
 		admins,
-		status: GAME_STATES.PLAYING
+		status: GAME_STATES.WAITING_FOR_CLUE
 	  },{ merge: true }).then(function(docRef) {
 		  console.log("playing new session")
-		  startNewTimer()
 	  })
 	  .catch(function(err) {
 		  console.error("Error starting new session", err)
@@ -487,9 +492,10 @@ function play () {
 }
 
 function giveClue () {
-	if (player[team] !== currentTeam) return
+	if (player.team !== currentTeam) return
 	db.collection("sessions").doc(session_id).set({
-	  clue
+	  clue,
+	  status: GAME_STATES.CLUE_GIVEN
 	}, {merge: true}).then(function (_) {
 	}).catch(function(err){
 		console.error("Error giving new clue", err)
@@ -569,21 +575,39 @@ function drawGrid (words) {
     words.forEach(w => {
 		let wordDiv = document.createElement('div')
 		wordDiv.classList.add('word')
+		wordDiv.id = w
 		if (!spyMasterView) {
 			wordDiv.addEventListener('click', function (e) {
-					let teamBelongingTo = wordTeamDict[w]
-					wordDiv.classList.add(teamBelongingTo)
-					delete teams[teamBelongingTo][w]
-					if (teamBelongingTo === 'black') {
-						alert(currentTeam ? 'Team blue has lost the game' : 'Team red has lost the game')
-						return
-					}
-					if (team.size === 0) {
-						alert(`Team ${teamBelongingTo} has won the game! :)`)
-					}
+				if (!isAdmin || player.team !== currentTeam) {
+					return
+				}
+				let teamBelongingTo = wordTeamDict[w]
+				// delete teams[teamBelongingTo][w]
+				let objToUpdate = {}
+				const cloneTeams = Object.assign({}, teams)
+				const cloneTeamBelongingTo = Object.assign({}, cloneTeams[teamBelongingTo])
+				delete cloneTeamBelongingTo[w]
+				cloneTeams[teamBelongingTo] = cloneTeamBelongingTo
+				objToUpdate.teams = cloneTeams
+				let winner
+				if (teamBelongingTo === BLACK) {
+					// alert(currentTeam ? 'Team blue has lost the game' : 'Team red has lost the game')
+					winner = !currentTeam
+				}
+				if (team.size === 0) {
+					winner = currentTeam
+					// alert(`Team ${teamBelongingTo} has won the game! :)`)
+				}
+				if (winner) {
+				  objToUpdate.winner = winner
+				  objToUpdate.status = GAME_STATES.DONE
+				}
+				db.collection("sessions").doc(session_id).set(objToUpdate, {merge: true}).then(function(_){
 					if (teamBelongingTo === TEAM_STYLE.NEUTRAL || teamBelongingTo != currentTeamEnum[currentTeam]) {
 						endTurn()
-					}			
+					}
+				}).catch(function (err){
+				})
 			})
 		}
 				wordDiv.innerText = w.toUpperCase()
@@ -605,7 +629,7 @@ function chooseSpyMasters () {
 	return [blueSpyMaster, redSpyMaster]
 }
 
-function chooseAdmins () {
+function chooseAdmins (spyMasters) {
 	const nonSpyMasters = players.filter(p => !spyMasters.some(s => s.name === p.name))
 	let blueTeam = nonSpyMasters.filter(p => !!p.team)
 	let redTeam = nonSpyMasters.filter(p => !p.team)
@@ -615,23 +639,32 @@ function chooseAdmins () {
 }
 
 function loadSpyMasterView (_) {
-	localStorage.setItem('spyMasterView', JSON.stringify(true))
-	window.open(document.location.href, '_blank')
+	// localStorage.setItem('spyMasterView', JSON.stringify(true))
+	// localStorage.setItem('spyMasterName', name)
+	// window.open(document.location.href, '_blank')
+	toggleSpyMaster()
 }
 function toggleSpyMaster (_) {
+	spyMasterView = !spyMasterView
 	words.forEach(w => {
 		let teamBelongingTo = wordTeamDict[w]
 		let el = elements[w]
-		el.classList.add(teamBelongingTo)
+		let teamAssociatedWithTheWord = wordTeamDict[w]
+		let wordRevealed = !teams[teamAssociatedWithTheWord][w]
+		if (spyMasterView && !wordRevealed)
+		  el.classList.add(teamBelongingTo)
+		else if (!spyMasterView && !wordRevealed) {
+		  el.classList.remove(teamBelongingTo)
+		}
 	})
-	localStorage.setItem('spyMasterView', JSON.stringify(false))
 }
 
 function endTurn (_) {
 	currentTeam = !currentTeam
 	document.querySelector(".clue").style.disabled = true
 	db.collection("sessions").doc(session_id).set({
-	  currentTeam
+	  currentTeam,
+	  status: GAME_STATES.WAITING_FOR_CLUE
 	}, {merge: true})
 }
 
@@ -643,11 +676,20 @@ function setCurrentTeam () {
 	currentTeamEl.classList.add(name)
 }
 
-function startNewTimer () {
-	if (timerEl !== null) document.removeChild(timerEl)
+function startNewTimerForClueGiver () {
+	const inviteEl = document.querySelector('.invite')
+	if (timerEl !== null) inviteEl.removeChild(timerEl)
 	const template = document.getElementById('x-timer')
 	timerEl = template.content.cloneNode(true)
-	document.querySelector('.invite').appendChild(timerEl)
+	inviteEl.appendChild(timerEl)
+}
+
+function startNewTimerForGuessers () {
+	const inviteEl = document.querySelector('.invite')
+	if (timerGuessEl !== null) inviteEl.removeChild(timerGuessEl)
+	const template = document.getElementById('x-timer')
+	timerGuessEl = template.content.cloneNode(true)
+	inviteEl.appendChild(timerGuessEl)
 }
 
 document.querySelector('.endTurn').addEventListener('click', endTurn)
@@ -655,55 +697,80 @@ document.querySelector('.endTurn').addEventListener('click', endTurn)
 function onSnapshotCb (doc) {
 	if (!name) {
 		document.querySelector('.join').style.display = 'block'
-	  }
-	  session = doc.data()
-	  players = session.players
-	  if (!players.some(p => p.name === name)) {
-		  // Check if the game has already begun
-		  if (session.status === GAME_STATES.PLAYING) {
-			  console.warn('The game is already in progress. Please wait till the next session is open')
-			  return
-		  }
-	  }
-	  currentTeam = session.currentTeam
-	  setCurrentTeam()
+	}
 
-	  player = players.find(p => p.name === name)
-	  if (player) {
+	session = doc.data()
+	currentState = session.status
+
+	if (currentState === GAME_STATES.DONE) {
+		alert(`Team ${currentTeamEnum[session.winner]} has won! :)`)
+		return
+	}
+	let updated_players = session.players
+	if (!updated_players.some(p => p.name === name)) {
+		// Check if the game has already begun
+		if (currentState === GAME_STATES.WAITING_FOR_CLUE) {
+			console.warn('The game is already in progress. Please wait till the next session is open')
+			return
+		}
+	}
+	currentTeam = session.currentTeam
+	setCurrentTeam()
+
+	player = updated_players.find(p => p.name === name)
+	if (player) {
 		const welcomeMsg = document.querySelector('.welcome')
 		if (!welcomeMsg.innerText) {
 			welcomeMsg.innerText = `Welcome ${name}. You are part of team ${currentTeamEnum[player.team]}`
 		}
-	  }
+	}
+	if (!spyMasters.length) {
+		spyMasters = session.spyMasters
+		isSpyMaster = spyMasters.find(s => s.name === name) !== undefined
+	}
 
-	  spyMasters = session.spyMasters
-	  isSpyMaster = spyMasters.find(s => s.name === name)
-	  clue = session.clue
-	  if (isSpyMaster !== undefined) {
-		  document.querySelector('.spymaster').style.display = 'block'
-		  document.querySelector('.show-clue').style.display = 'none'
-	  } else {
-		document.querySelector('.show-clue').innerText = clue
-	  }
+	clue = session.clue
 
-	  admins = session.admins
-	  isAdmin = admins.some(a => a.name === name)
-	  words = session.words
-	  wordTeamDict = session.wordTeamDict
-	  console.log("Current data: ", session)
-	  const playersList = document.querySelector('.players')
-	  new Array(...playersList.children).forEach(c => playersList.removeChild(c))
-	  session.players.sort((a,b) => {
-		 b.team - a.team
-	  })
-	  session.players.forEach(p => {
-		  const li = document.createElement('li')
-		  li.innerText = 
+	if (isSpyMaster) {
+		document.querySelector('.spymaster').style.display = 'block'
+		document.querySelector('.show-clue').style.display = 'none'
+		document.querySelector('.spymasterContainer').style.display = 'block'
+	} else {
+	document.querySelector('.show-clue').innerText = clue
+	}
+
+	if (!admins.length) {
+	admins = session.admins
+	isAdmin = admins.some(a => a.name === name)
+	}
+
+	if (!words.length) {
+		words = session.words
+		wordTeamDict = session.wordTeamDict
+	}
+
+	teams = session.teams
+	words.forEach(w => {
+		const wordDiv = document.getElementById(w)
+		const teamAssociatedWithTheWord = wordTeamDict[w]
+		if (!teams[teamAssociatedWithTheWord][w] && !wordDiv.classList.contains(teamAssociatedWithTheWord)) wordDiv.classList.add(teamAssociatedWithTheWord)
+	})
+
+	const playersList = document.querySelector('.players')
+	new Array(...playersList.children).forEach(c => playersList.removeChild(c))
+	updated_players.forEach(p => {
+		const li = document.createElement('li')
+		li.innerText = 
 			`${p.name} ${admins.some(a => a.name === p.name) ? `(Admin)` : ``} ${spyMasters.some(s => s.name === p.name) ? `(Spymaster)`: ``}`
-		  li.style.color = p.team ? BLUE_COLOR : RED_COLOR
-		  playersList.appendChild(li)
-	  })
-	  if (!gameLoaded) loadGame()
+		li.style.color = p.team ? BLUE_COLOR : RED_COLOR
+		playersList.appendChild(li)
+		})
+	players = updated_players
+
+	if (currentState === GAME_STATES.WAITING_FOR_CLUE) startNewTimerForClueGiver()
+	if (currentState === GAME_STATES.CLUE_GIVEN) startNewTimerForGuessers()
+
+	if (!gameLoaded) loadGame()
 }
 
 function listenForUpdates () {
@@ -727,6 +794,7 @@ if (session_id) {
 	session_id = session_id.slice(1)
 	if(!setupSpyMasterViewIfRequired()) listenForUpdates()
 } else {
+  localStorage.clear()
   document.querySelector('.inviteInfo').style.display = 'block'
   document.querySelector('.start').style.display = 'block'
   loadGame()

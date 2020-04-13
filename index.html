@@ -21,13 +21,13 @@
                 Number of words associated with this clue:
             </label>
             <input type="number" style="width:100px" name="numWords" value="1"/>
-            <button class="giveClue button" onclick="giveClue()" disabled>Submit</button>
+            <button class="giveClue button" onclick="giveClue()" disabled>Submit clue</button>
         </div>
         <label class="show-clue"></label>
-        <template id="x-timer">
-            <x-timer style="display: none;" class="timer" time="60" on-timer-end="endTurn"></x-timer>
-        </template>
     </div>
+    <template id="x-timer">
+        <x-timer class="timer" time="60" on-timer-end="endTurn"></x-timer>
+    </template>
     <label>Players:</label>
     <ul class="players"></ul>
     <div class="info">
